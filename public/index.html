@@ -149,3 +149,63 @@
 				color: var(--text-light);
 				padding: 1rem;
 			}
+
+			.typing-indicator.visible {
+				display: block;
+			}
+
+			footer {
+				margin-top: 1rem;
+				text-align: center;
+				font-size: 0.85rem;
+				color: var(--text-light);
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<h1>AI NOC Troubleshooting Assistant</h1>
+			<p>
+				Network troubleshooting for routing, switching, DNS, DHCP, and
+				connectivity issues
+			</p>
+		</header>
+
+		<div class="chat-container">
+			<div id="chat-messages" class="chat-messages">
+				<div class="message assistant-message">
+					<p>
+						Hello! I'm an AI NOC troubleshooting assistant. Describe a network
+						issue (for example VLANs, routing, DNS, DHCP, packet loss, or a
+						down uplink) and I'll walk you through the likely causes and next
+						steps.
+					</p>
+				</div>
+			</div>
+
+			<div class="typing-indicator" id="typing-indicator">
+				Analyzing the issue...
+			</div>
+
+			<div class="message-input">
+				<textarea
+					id="user-input"
+					placeholder="Describe your network issue, e.g. users on VLAN 20 cannot reach the gateway..."
+					rows="1"
+					autofocus
+				></textarea>
+				<button id="send-button">Send</button>
+			</div>
+		</div>
+
+		<footer>
+			<p>
+				Built by Juvensky Berlus with Cloudflare Workers AI, Durable Objects,
+				and TypeScript
+			</p>
+		</footer>
+
+		<!-- Chat app script -->
+		<script src="chat.js"></script>
+	</body>
+</html>
