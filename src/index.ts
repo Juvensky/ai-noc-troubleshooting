@@ -7,96 +7,128 @@
  *
  * @license MIT
  */
+import { DurableObject } from "cloudflare:workers";
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
 const MODEL_ID = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-// Default system prompt
 const SYSTEM_PROMPT =
 	"You are a senior NOC engineer. Give clear, step-by-step network troubleshooting help. Ask for missing details like device model, logs, or topology when needed.";
 
 export default {
-	/**
-	 * Main request handler for the Worker
-	 */
-	async fetch(
-		request: Request,
-		env: Env,
-		ctx: ExecutionContext,
-	): Promise<Response> {
+	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle static assets (frontend)
-		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
+		if (!url.pathname.startsWith("/api/")) {
 			return env.ASSETS.fetch(request);
 		}
 
-		// API Routes
-		if (url.pathname === "/api/chat") {
-			// Handle POST requests for chat
-			if (request.method === "POST") {
-				return handleChatRequest(request, env);
-			}
+		if (url.pathname === "/api/chat" || url.pathname === "/api/history") {
+			// One conversation per browser, tracked with a cookie
+			const cookie = request.headers.get("cookie") ?? "";
+			const existing = cookie.match(/(?:^|;\s*)sid=([\w-]+)/)?.[1];
+			const sid = existing ?? crypto.randomUUID();
 
-			// Method not allowed for other request types
-			return new Response("Method not allowed", { status: 405 });
+			const stub = env.CHAT_SESSION.get(env.CHAT_SESSION.idFromName(sid));
+			const res = await stub.fetch(request);
+
+			const out = new Response(res.body, res);
+			if (!existing) {
+				out.headers.append(
+					"set-cookie",
+					`sid=${sid}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`,
+				);
+			}
+			return out;
 		}
 
-		// Handle 404 for unmatched routes
 		return new Response("Not found", { status: 404 });
 	},
 } satisfies ExportedHandler<Env>;
 
-/**
- * Handles chat API requests
- */
-async function handleChatRequest(
-	request: Request,
-	env: Env,
-): Promise<Response> {
-	try {
-		// Parse JSON request body
-		const { messages = [] } = (await request.json()) as {
-			messages: ChatMessage[];
-		};
+export class ChatSession extends DurableObject<Env> {
+	private async load(): Promise<ChatMessage[]> {
+		return (await this.ctx.storage.get<ChatMessage[]>("messages")) ?? [];
+	}
 
-		// Add system prompt if not present
-		if (!messages.some((msg) => msg.role === "system")) {
-			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+	async fetch(request: Request): Promise<Response> {
+		const url = new URL(request.url);
+
+		// View or clear saved history
+		if (url.pathname === "/api/history") {
+			if (request.method === "DELETE") {
+				await this.ctx.storage.delete("messages");
+				return Response.json({ ok: true });
+			}
+			return Response.json({ messages: await this.load() });
 		}
 
-		const inputs = {
-			messages,
-			max_tokens: 1024,
-			stream: true,
-		} satisfies AiTextGenerationInput & { stream: true };
+		if (request.method !== "POST") {
+			return new Response("Method not allowed", { status: 405 });
+		}
 
-		const stream = await env.AI.run<typeof MODEL_ID>(MODEL_ID, inputs, {
-			// Uncomment to use AI Gateway
-			// gateway: {
-			//   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-			//   skipCache: false,      // Set to true to bypass cache
-			//   cacheTtl: 3600,        // Cache time-to-live in seconds
-			// },
-		});
+		try {
+			// The page sends its whole history; we only need the newest user message
+			const { messages = [] } = (await request.json()) as {
+				messages: ChatMessage[];
+			};
+			const last = [...messages].reverse().find((m) => m.role === "user");
+			if (!last) {
+				return Response.json({ error: "No user message" }, { status: 400 });
+			}
 
-		return new Response(stream, {
-			headers: {
-				"content-type": "text/event-stream; charset=utf-8",
-				"cache-control": "no-cache",
-				connection: "keep-alive",
-			},
-		});
-	} catch (error) {
-		console.error("Error processing chat request:", error);
-		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
-			{
-				status: 500,
-				headers: { "content-type": "application/json" },
-			},
-		);
+			const history = await this.load();
+			history.push({ role: "user", content: last.content });
+			await this.ctx.storage.put("messages", history);
+
+			const stream = (await this.env.AI.run(MODEL_ID as any, {
+				messages: [
+					{ role: "system", content: SYSTEM_PROMPT },
+					...history.slice(-20), // keep the last 20 messages as context
+				],
+				max_tokens: 1024,
+				stream: true,
+			} as any)) as unknown as ReadableStream<Uint8Array>;
+
+			const [toClient, toSave] = stream.tee();
+			this.ctx.waitUntil(this.saveReply(history, toSave));
+
+			return new Response(toClient, {
+				headers: {
+					"content-type": "text/event-stream; charset=utf-8",
+					"cache-control": "no-cache",
+				},
+			});
+		} catch (error) {
+			console.error("Chat error:", error);
+			return Response.json({ error: "Failed to process request" }, { status: 500 });
+		}
+	}
+
+	// Read the streamed reply and append it to stored history
+	private async saveReply(history: ChatMessage[], stream: ReadableStream<Uint8Array>) {
+		const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
+		let buf = "";
+		let reply = "";
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buf += value;
+			const lines = buf.split("\n");
+			buf = lines.pop() ?? "";
+			for (const line of lines) {
+				if (!line.startsWith("data:")) continue;
+				const data = line.slice(5).trim();
+				if (!data || data === "[DONE]") continue;
+				try {
+					const j = JSON.parse(data);
+					reply += j.response ?? j.choices?.[0]?.delta?.content ?? "";
+				} catch {}
+			}
+		}
+		if (reply) {
+			history.push({ role: "assistant", content: reply });
+			await this.ctx.storage.put("messages", history);
+		}
 	}
 }
