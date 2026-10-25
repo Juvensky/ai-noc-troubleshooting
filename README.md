@@ -1,88 +1,40 @@
-# LLM Chat Application Template
+# AI NOC Troubleshooting Assistant
 
-A simple, ready-to-deploy chat application template powered by Cloudflare Workers AI. This template provides a clean starting point for building AI chat applications with streaming responses.
+An AI chat assistant for network operations (NOC) troubleshooting. Describe a network or infrastructure problem and it gives step-by-step help and asks for missing details like device model, logs, or topology. Built on Cloudflare Workers, Workers AI (Llama 3.3), and Durable Objects.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/llm-chat-app-template)
+**[Try the live demo](https://ai-noc-troubleshooting.berlusjuven.workers.dev)**
 
-<!-- dash-content-start -->
+## Try these prompts
 
-## Demo
+- `BGP session keeps flapping on my edge router`
+- `A new Linux server in Rack 12 (10.12.1.50/24, gw 10.12.1.1) can ping its rack but not Rack 14, and the first traceroute hop times out. What should I check on the server first?`
 
-This template demonstrates how to build an AI-powered chat interface using Cloudflare Workers AI with streaming responses. It features:
+## Architecture
 
-- Real-time streaming of AI responses using Server-Sent Events (SSE)
-- Easy customization of models and system prompts
-- Support for AI Gateway integration
-- Clean, responsive UI that works on mobile and desktop
+| Component | Technology |
+|---|---|
+| LLM | Llama 3.3 70B on Cloudflare Workers AI |
+| Coordination | A Worker routes each chat to a per-session Durable Object |
+| User input | Streaming chat page served by the Worker (static assets) |
+| Memory | Durable Object storage keeps each conversation server-side |
 
 ## Features
 
-- 💬 Simple and responsive chat interface
-- ⚡ Server-Sent Events (SSE) for streaming responses
-- 🧠 Powered by Cloudflare Workers AI LLMs
-- 🛠️ Built with TypeScript and Cloudflare Workers
-- 📱 Mobile-friendly design
-- 🔄 Maintains chat history on the client
-- 🔎 Built-in Observability logging
-<!-- dash-content-end -->
+- Streaming responses over Server-Sent Events (SSE)
+- NOC engineer system prompt for network troubleshooting
+- Per-visitor conversation memory stored in a Durable Object
+- Saved history viewable at `/api/history`
+- Responsive chat UI for mobile and desktop
+- Built-in Workers Observability logging
 
-## Getting Started
+## How it works
 
-### Prerequisites
+1. The browser sends a message to `/api/chat`.
+2. The Worker identifies the visitor by cookie and forwards the request to that visitor's Durable Object.
+3. The Durable Object saves the message, sends the last 20 messages to the model, and streams the reply back.
+4. The reply is saved too, so the conversation is stored server-side and can be read from `/api/history`.
 
-- [Node.js](https://nodejs.org/) (v18 or newer)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-- A Cloudflare account with Workers AI access
-
-### Installation
-
-1. Clone this repository:
-
-   ```bash
-   git clone https://github.com/cloudflare/templates.git
-   cd templates/llm-chat-app
-   ```
-
-2. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-3. Generate Worker type definitions:
-   ```bash
-   npm run cf-typegen
-   ```
-
-### Development
-
-Start a local development server:
-
-```bash
-npm run dev
-```
-
-This will start a local server at http://localhost:8787.
-
-Note: Using Workers AI accesses your Cloudflare account even during local development, which will incur usage charges.
-
-### Deployment
-
-Deploy to Cloudflare Workers:
-
-```bash
-npm run deploy
-```
-
-### Monitor
-
-View real-time logs associated with any deployed Worker:
-
-```bash
-npm wrangler tail
-```
-
-## Project Structure
+## Project structure
 
 ```
 /
@@ -90,64 +42,39 @@ npm wrangler tail
 │   ├── index.html      # Chat UI HTML
 │   └── chat.js         # Chat UI frontend script
 ├── src/
-│   ├── index.ts        # Main Worker entry point
+│   ├── index.ts        # Worker entry point and ChatSession Durable Object
 │   └── types.ts        # TypeScript type definitions
 ├── test/               # Test files
-├── wrangler.jsonc      # Cloudflare Worker configuration
+├── wrangler.jsonc      # Worker, AI, and Durable Object configuration
 ├── tsconfig.json       # TypeScript configuration
 └── README.md           # This documentation
 ```
 
-## How It Works
+## Run it yourself
 
-### Backend
+Prerequisites: [Node.js](https://nodejs.org/) v18 or newer and a Cloudflare account with Workers AI access.
 
-The backend is built with Cloudflare Workers and uses the Workers AI platform to generate responses. The main components are:
+```
+git clone https://github.com/Juvensky/ai-noc-troubleshooting.git
+cd ai-noc-troubleshooting
+npm install
+npm run cf-typegen
+npm run dev
+```
 
-1. **API Endpoint** (`/api/chat`): Accepts POST requests with chat messages and streams responses
-2. **Streaming**: Uses Server-Sent Events (SSE) for real-time streaming of AI responses
-3. **Workers AI Binding**: Connects to Cloudflare's AI service via the Workers AI binding
+The dev server runs at http://localhost:8787. Workers AI runs on Cloudflare's network, so local development uses your account and can incur usage charges.
 
-### Frontend
-
-The frontend is a simple HTML/CSS/JavaScript application that:
-
-1. Presents a chat interface
-2. Sends user messages to the API
-3. Processes streaming responses in real-time
-4. Maintains chat history on the client side
+Deploy with `npm run deploy`. View live logs with `npx wrangler tail`.
 
 ## Customization
 
-### Changing the Model
-
-To use a different AI model, update the `MODEL_ID` constant in `src/index.ts`. You can find available models in the [Cloudflare Workers AI documentation](https://developers.cloudflare.com/workers-ai/models/).
-
-### Using AI Gateway
-
-The template includes commented code for AI Gateway integration, which provides additional capabilities like rate limiting, caching, and analytics.
-
-To enable AI Gateway:
-
-1. [Create an AI Gateway](https://dash.cloudflare.com/?to=/:account/ai/ai-gateway) in your Cloudflare dashboard
-2. Uncomment the gateway configuration in `src/index.ts`
-3. Replace `YOUR_GATEWAY_ID` with your actual AI Gateway ID
-4. Configure other gateway options as needed:
-   - `skipCache`: Set to `true` to bypass gateway caching
-   - `cacheTtl`: Set the cache time-to-live in seconds
-
-Learn more about [AI Gateway](https://developers.cloudflare.com/ai-gateway/).
-
-### Modifying the System Prompt
-
-The default system prompt can be changed by updating the `SYSTEM_PROMPT` constant in `src/index.ts`.
-
-### Styling
-
-The UI styling is contained in the `<style>` section of `public/index.html`. You can modify the CSS variables at the top to quickly change the color scheme.
+- **Model:** change `MODEL_ID` in `src/index.ts`. Browse options in the [Workers AI model catalog](https://developers.cloudflare.com/workers-ai/models/).
+- **Behavior:** edit `SYSTEM_PROMPT` in `src/index.ts`.
+- **Styling:** edit the CSS variables at the top of `public/index.html`.
+- **AI Gateway:** for logging, caching, and rate limits, see the [AI Gateway docs](https://developers.cloudflare.com/ai-gateway/).
 
 ## Resources
 
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Cloudflare Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
-- [Workers AI Models](https://developers.cloudflare.com/workers-ai/models/)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+- [Workers AI](https://developers.cloudflare.com/workers-ai/)
+- [Durable Objects](https://developers.cloudflare.com/durable-objects/)
