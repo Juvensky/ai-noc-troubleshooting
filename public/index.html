@@ -3,7 +3,27 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>LLM Chat App</title>
+		<title>AI NOC Troubleshooting Assistant</title>
+		<meta
+			name="description"
+			content="AI chat assistant for network troubleshooting built on Cloudflare Workers AI (Llama 3.3) and Durable Objects."
+		/>
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="AI NOC Troubleshooting Assistant" />
+		<meta
+			property="og:description"
+			content="Streaming AI assistant for network troubleshooting. Built with Cloudflare Workers AI, Durable Objects, and TypeScript."
+		/>
+		<meta
+			property="og:url"
+			content="https://ai-noc-troubleshooting.berlusjuven.workers.dev/"
+		/>
+		<meta name="twitter:card" content="summary" />
+		<meta name="twitter:title" content="AI NOC Troubleshooting Assistant" />
+		<meta
+			name="twitter:description"
+			content="Streaming AI assistant for network troubleshooting on Cloudflare Workers AI."
+		/>
 		<style>
 			:root {
 				--primary-color: #f6821f;
@@ -129,55 +149,3 @@
 				color: var(--text-light);
 				padding: 1rem;
 			}
-
-			.typing-indicator.visible {
-				display: block;
-			}
-
-			footer {
-				margin-top: 1rem;
-				text-align: center;
-				font-size: 0.85rem;
-				color: var(--text-light);
-			}
-		</style>
-	</head>
-	<body>
-		<header>
-			<h1>Cloudflare AI Chat</h1>
-			<p>Powered by Cloudflare Workers AI</p>
-		</header>
-
-		<div class="chat-container">
-			<div id="chat-messages" class="chat-messages">
-				<div class="message assistant-message">
-					<p>
-						Hello! I'm an LLM chat app powered by Cloudflare Workers AI. How can
-						I help you today?
-					</p>
-				</div>
-			</div>
-
-			<div class="typing-indicator" id="typing-indicator">
-				AI is thinking...
-			</div>
-
-			<div class="message-input">
-				<textarea
-					id="user-input"
-					placeholder="Type your message here..."
-					rows="1"
-					autofocus
-				></textarea>
-				<button id="send-button">Send</button>
-			</div>
-		</div>
-
-		<footer>
-			<p>Cloudflare Workers AI Chat Template &copy; 2025</p>
-		</footer>
-
-		<!-- Chat app script -->
-		<script src="chat.js"></script>
-	</body>
-</html>
